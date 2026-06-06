@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Gesture Puzzle</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;600&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --green:#00ff88; --yellow:#f5ff00; --cyan:#00e5ff; --red:#ff3d5a; --purple:#bf5fff;
+  --bg:#050a0e; --glass:rgba(0,255,136,0.05); --border:rgba(0,255,136,0.15);
+  --dim:rgba(0,255,136,0.45); --mono:'Share Tech Mono',monospace; --ui:'Rajdhani',sans-serif;
+}
+
+html,body{width:100%;height:100%;background:var(--bg);color:var(--green);font-family:var(--ui);overflow:hidden;cursor:none}
+
+/* ─── SCREENS ─────────────────────────────────────────────────────── */
+.screen{display:none;width:100vw;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px}
+.screen.active{display:flex}
+
+/* ─── SHARED HEADER ────────────────────────────────────────────────── */
+.hdr{display:flex;align-items:center;gap:16px;width:100%;max-width:980px}
+.hdr-logo{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.15em;text-transform:uppercase;white-space:nowrap}
+.hdr-logo span{color:var(--green)}
+.hdr-div{flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+.hdr-badge{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--bg);padding:3px 10px;text-transform:uppercase}
+
+/* ─── CAPTURE SCREEN ───────────────────────────────────────────────── */
+#capture-screen .body{display:flex;gap:12px;width:100%;max-width:980px;align-items:flex-start}
+
+#viewport{position:relative;flex:1;aspect-ratio:16/9;background:#000;overflow:hidden;border:1px solid var(--border);min-width:0}
+#viewport::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:10;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px)}
+.corner{position:absolute;width:22px;height:22px;border-color:var(--green);border-style:solid;z-index:20;opacity:.5}
+.corner.tl{top:6px;left:6px;border-width:2px 0 0 2px}
+.corner.tr{top:6px;right:6px;border-width:2px 2px 0 0}
+.corner.bl{bottom:6px;left:6px;border-width:0 0 2px 2px}
+.corner.br{bottom:6px;right:6px;border-width:0 2px 2px 0}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:30;transition:opacity .07s}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+canvas#overlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);z-index:5}
+
+.side-panel{display:flex;flex-direction:column;gap:8px;width:185px;flex-shrink:0}
+.pbox{border:1px solid var(--border);background:var(--glass);padding:9px 11px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim)}
+.ptitle{color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:7px}
+#preview-canvas{width:100%;aspect-ratio:16/9;background:#000;border:1px solid var(--border);display:block}
+
+/* capture instruction box */
+#cap-instr{border:1px solid rgba(245,255,0,.25);background:rgba(245,255,0,.04);padding:9px 11px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+#cap-instr .step{display:flex;gap:8px;align-items:baseline;margin-bottom:5px}
+#cap-instr .step:last-child{margin-bottom:0}
+#cap-instr .num{color:var(--yellow);font-size:12px;flex-shrink:0}
+#cap-instr .desc{color:var(--dim);font-size:9px;letter-spacing:.06em;line-height:1.5}
+
+#coord-log{border:1px solid var(--border);background:var(--glass);padding:7px 9px;font-family:var(--mono);font-size:9px;color:var(--dim);line-height:1.9}
+#coord-log .lbl{color:var(--yellow)}
+#coord-log .val{color:var(--green)}
+
+/* ─── SHARED HUD ───────────────────────────────────────────────────── */
+.hud{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:980px;padding:6px 12px;border:1px solid var(--border);background:var(--glass);font-family:var(--mono);font-size:10px;letter-spacing:.1em}
+.hg{display:flex;align-items:center;gap:9px}
+.hl{color:var(--dim);text-transform:uppercase}
+.hv{color:var(--green)}
+.hv.on{color:var(--yellow)}.hv.ok{color:var(--cyan)}.hv.er{color:var(--red)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1.2s ease-in-out infinite}
+.dot.live{background:var(--green);animation:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.instr{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;text-align:center}
+.instr span{color:var(--yellow)}
+
+/* ─── PUZZLE SCREEN ────────────────────────────────────────────────── */
+#puzzle-area{display:flex;gap:18px;width:100%;max-width:980px;align-items:flex-start;justify-content:center}
+
+#grid-wrap{position:relative;flex-shrink:0;border:1px solid var(--border);background:#000;overflow:hidden}
+#grid-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px);z-index:5}
+
+/* ─── TILES ────────────────────────────────────────────────────────── */
+.tile{
+  position:absolute;border:1px solid rgba(0,229,255,0.2);
+  transition:left .18s cubic-bezier(.34,1.4,.64,1), top .18s cubic-bezier(.34,1.4,.64,1), box-shadow .12s, border-color .12s;
+  z-index:1;user-select:none;overflow:hidden;
+}
+.tile canvas{display:block;width:100%;height:100%;pointer-events:none}
+.tile.dragging{
+  z-index:100;
+  transition:box-shadow .08s, border-color .08s;
+  box-shadow:0 0 0 2px var(--yellow), 0 12px 32px rgba(0,0,0,.7);
+  border-color:var(--yellow);
+}
+.tile.drop-target{border-color:var(--cyan);box-shadow:0 0 0 2px var(--cyan)}
+.tile.correct{border-color:rgba(0,255,136,.4)}
+.tile.correct.just-solved{animation:solved-pulse .55s ease-out forwards}
+@keyframes solved-pulse{0%{box-shadow:0 0 0 0 rgba(0,255,136,.8)}70%{box-shadow:0 0 0 14px rgba(0,255,136,0)}100%{box-shadow:0 0 0 0 rgba(0,255,136,0)}}
+
+/* ─── PUZZLE SIDEBAR ───────────────────────────────────────────────── */
+#puzzle-info{display:flex;flex-direction:column;gap:8px;width:165px;flex-shrink:0}
+
+#ghost-canvas{width:100%;display:block;background:#000;border:1px solid var(--border);opacity:.5;transition:opacity .3s}
+#ghost-canvas:hover{opacity:.85}
+
+#timer-box{border:1px solid var(--border);background:var(--glass);padding:9px 12px;font-family:var(--mono);text-align:center}
+#timer-display{font-size:30px;color:var(--yellow);letter-spacing:.08em;line-height:1}
+#timer-label{font-size:9px;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.15em}
+
+#progress-bar-wrap{border:1px solid var(--border);background:var(--glass);padding:8px 11px;font-family:var(--mono);font-size:9px;color:var(--dim)}
+#prog-track{height:3px;background:rgba(0,255,136,.1);border-radius:2px;overflow:hidden;margin-top:7px}
+#prog-fill{height:100%;background:var(--green);border-radius:2px;transition:width .3s ease;width:0%}
+#prog-text{margin-top:5px;color:var(--green)}
+
+#moves-box{border:1px solid var(--border);background:var(--glass);padding:8px 11px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+#moves-val{font-size:24px;color:var(--cyan);letter-spacing:.05em;line-height:1.1}
+
+/* leaderboard peek button */
+#lb-peek-btn{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--purple);
+  background:rgba(191,95,255,.08);border:1px solid rgba(191,95,255,.3);
+  padding:7px 10px;cursor:pointer;text-transform:uppercase;width:100%;transition:background .15s}
+#lb-peek-btn:hover{background:rgba(191,95,255,.18)}
+
+#reframe-btn{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  color:var(--dim);background:transparent;border:1px solid var(--border);
+  padding:7px 10px;cursor:pointer;text-transform:uppercase;width:100%;transition:background .15s, color .15s}
+#reframe-btn:hover{background:rgba(0,255,136,.08);color:var(--green)}
+
+/* ─── WIN OVERLAY ──────────────────────────────────────────────────── */
+#win-overlay{
+  display:none;position:fixed;inset:0;z-index:998;
+  background:rgba(5,10,14,.92);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;gap:0;
+  animation:fadeIn .35s ease;
+}
+#win-overlay.show{display:flex}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+#win-box{
+  border:1px solid var(--cyan);background:rgba(5,10,14,.95);
+  padding:28px 32px;text-align:center;width:380px;max-width:96vw;
+}
+#win-title{font-family:var(--mono);font-size:20px;color:var(--cyan);letter-spacing:.25em;margin-bottom:4px}
+#win-time-big{font-family:var(--mono);font-size:44px;color:var(--yellow);letter-spacing:.08em;line-height:1.1}
+#win-sub{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:2px;letter-spacing:.12em;text-transform:uppercase}
+#win-moves{font-family:var(--mono);font-size:12px;color:var(--green);margin-top:10px;letter-spacing:.08em}
+
+/* name entry */
+#win-name-section{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+#win-name-label{font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.15em;margin-bottom:7px}
+#win-name-row{display:flex;gap:6px}
+#win-name-input{
+  flex:1;font-family:var(--mono);font-size:13px;background:rgba(0,255,136,.06);
+  border:1px solid var(--border);color:var(--green);padding:7px 10px;
+  outline:none;letter-spacing:.05em;text-transform:uppercase;
+}
+#win-name-input::placeholder{color:var(--dim);text-transform:uppercase}
+#win-name-input:focus{border-color:var(--green)}
+#win-submit-btn{
+  font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+  color:var(--bg);background:var(--green);border:none;
+  padding:7px 14px;cursor:pointer;text-transform:uppercase;transition:background .15s;white-space:nowrap;
+}
+#win-submit-btn:hover{background:var(--yellow)}
+#win-submit-btn:disabled{background:var(--dim);cursor:default}
+
+/* leaderboard inside win box */
+#win-leaderboard{margin-top:14px;border-top:1px solid var(--border);padding-top:12px;display:none}
+#lb-title-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;
+  color:var(--dim);text-transform:uppercase;letter-spacing:.15em;margin-bottom:8px}
+.lb-row{
+  display:grid;grid-template-columns:24px 1fr 56px 40px;gap:6px;
+  align-items:center;font-family:var(--mono);font-size:11px;
+  padding:5px 0;border-bottom:1px solid rgba(0,255,136,.07);
+}
+.lb-row:last-child{border-bottom:none}
+.lb-rank{color:var(--dim);font-size:10px}
+.lb-rank.gold{color:var(--yellow)}
+.lb-rank.silver{color:#c0c0c0}
+.lb-rank.bronze{color:#cd7f32}
+.lb-name{color:var(--green);letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-name.highlight{color:var(--cyan)}
+.lb-time{color:var(--yellow);text-align:right;font-size:12px}
+.lb-moves{color:var(--dim);text-align:right;font-size:9px}
+
+#win-again-btn{
+  margin-top:14px;font-family:var(--mono);font-size:11px;letter-spacing:.15em;
+  color:var(--bg);background:var(--cyan);border:none;
+  padding:10px;cursor:pointer;text-transform:uppercase;width:100%;transition:background .15s;display:none;
+}
+#win-again-btn:hover{background:var(--yellow)}
+
+/* ─── LEADERBOARD PEEK PANEL ───────────────────────────────────────── */
+#lb-panel{
+  display:none;position:fixed;inset:0;z-index:990;
+  background:rgba(5,10,14,.88);align-items:center;justify-content:center;
+}
+#lb-panel.show{display:flex}
+#lb-panel-box{
+  border:1px solid rgba(191,95,255,.4);background:rgba(5,10,14,.97);
+  padding:24px 28px;width:340px;max-width:96vw;
+}
+#lb-panel-title{font-family:var(--mono);font-size:14px;color:var(--purple);letter-spacing:.2em;margin-bottom:14px;text-transform:uppercase}
+#lb-panel-close{
+  margin-top:14px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  color:var(--dim);background:transparent;border:1px solid var(--border);
+  padding:7px;cursor:pointer;text-transform:uppercase;width:100%;transition:color .15s;
+}
+#lb-panel-close:hover{color:var(--green)}
+
+/* ─── VIRTUAL CURSOR ───────────────────────────────────────────────── */
+#gesture-cursor{
+  position:fixed;pointer-events:none;z-index:9999;display:none;
+  transform:translate(-50%,-50%);
+  width:14px;height:14px;border-radius:50%;
+  background:var(--yellow);
+  box-shadow:0 0 8px var(--yellow);
+  transition:width .08s, height .08s, background .08s, box-shadow .08s;
+}
+#gesture-cursor.pinching{
+  width:9px;height:9px;
+  background:var(--cyan);box-shadow:0 0 12px var(--cyan);
+}
+#gesture-cursor.on-tile{
+  border:2px solid var(--yellow);background:transparent;
+  box-shadow:0 0 10px var(--yellow);width:18px;height:18px;
+}
+</style>
+</head>
+<body>
+
+<div id="gesture-cursor"></div>
+
+<!-- ══════════════════ CAPTURE SCREEN ══════════════════ -->
+<div id="capture-screen" class="screen active">
+  <div class="hdr">
+    <div class="hdr-logo"><span>GESTURE</span> PUZZLE</div>
+    <div class="hdr-div"></div>
+    <div class="hdr-badge" style="background:var(--yellow)">Phase 1 — Frame</div>
+  </div>
+
+  <div class="body">
+    <div id="viewport">
+      <div class="corner tl"></div><div class="corner tr"></div>
+      <div class="corner bl"></div><div class="corner br"></div>
+      <div id="flash"></div>
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="side-panel">
+      <div class="pbox">
+        <div class="ptitle">Preview</div>
+        <canvas id="preview-canvas"></canvas>
+      </div>
+
+      <div id="cap-instr">
+        <div class="ptitle" style="color:var(--yellow)">How to Capture</div>
+        <div class="step"><div class="num">1</div><div class="desc">Pinch both hands simultaneously</div></div>
+        <div class="step"><div class="num">2</div><div class="desc">Drag to frame your region</div></div>
+        <div class="step"><div class="num">3</div><div class="desc">Release both pinches to snap</div></div>
+      </div>
+
+      <div id="coord-log">
+        <div><span class="lbl">STATE &nbsp;</span><span class="val" id="log-state">WAITING</span></div>
+        <div><span class="lbl">CORNER1</span><span class="val" id="log-c1">--</span></div>
+        <div><span class="lbl">CORNER2</span><span class="val" id="log-c2">--</span></div>
+        <div><span class="lbl">SIZE &nbsp;&nbsp;</span><span class="val" id="log-size">--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="hg"><div class="dot" id="status-dot"></div><span class="hl">Feed</span><span class="hv" id="feed-status">INIT</span></div>
+    <div class="hg"><span class="hl">Hands</span><span class="hv" id="hand-count">0/2</span></div>
+    <div class="hg"><span class="hl">FPS</span><span class="hv" id="fps-val">--</span></div>
+    <div class="hg"><span class="hl">Phase</span><span class="hv" id="phase-val">FRAME</span></div>
+  </div>
+
+  <div class="instr">Pinch <span>both hands</span> to frame → <span>unpinch</span> to capture &nbsp;|&nbsp; <span>ESC</span> to reset</div>
+</div>
+
+<!-- ══════════════════ PUZZLE SCREEN ══════════════════ -->
+<div id="puzzle-screen" class="screen">
+  <div class="hdr">
+    <div class="hdr-logo"><span>GESTURE</span> PUZZLE</div>
+    <div class="hdr-div"></div>
+    <div class="hdr-badge" style="background:var(--cyan)">Phase 2 — Solve</div>
+  </div>
+
+  <div id="puzzle-area">
+    <div id="grid-wrap"></div>
+
+    <div id="puzzle-info">
+      <div class="pbox">
+        <div class="ptitle">Reference</div>
+        <canvas id="ghost-canvas"></canvas>
+      </div>
+
+      <div id="timer-box">
+        <div id="timer-display">0:00</div>
+        <div id="timer-label">elapsed</div>
+      </div>
+
+      <div id="progress-bar-wrap">
+        <div class="ptitle">Correct</div>
+        <div id="prog-track"><div id="prog-fill"></div></div>
+        <div id="prog-text">0 / 9</div>
+      </div>
+
+      <div id="moves-box">
+        <div style="color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:3px">Swaps</div>
+        <div id="moves-val">0</div>
+      </div>
+
+      <button id="lb-peek-btn">⬡ Leaderboard</button>
+      <button id="reframe-btn">↩ New Frame</button>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="hg"><span class="hl">Grid</span><span class="hv ok">3 × 3</span></div>
+    <div class="hg"><span class="hl">Correct</span><span class="hv" id="solved-hud">0/9</span></div>
+    <div class="hg"><span class="hl">State</span><span class="hv" id="puzzle-state">SOLVING</span></div>
+    <div class="hg"><span class="hl">Holding</span><span class="hv" id="drag-hud">—</span></div>
+  </div>
+
+  <div class="instr"><span>Pinch</span> over a tile to grab → move and release to swap &nbsp;|&nbsp; <span>ESC</span> = new frame</div>
+</div>
+
+<!-- ══════════════════ WIN OVERLAY ══════════════════ -->
+<div id="win-overlay">
+  <div id="win-box">
+    <div id="win-title">PUZZLE SOLVED</div>
+    <div id="win-time-big">0:00</div>
+    <div id="win-sub">completion time</div>
+    <div id="win-moves"></div>
+
+    <div id="win-name-section">
+      <div id="win-name-label">Enter your name for the leaderboard</div>
+      <div id="win-name-row">
+        <input id="win-name-input" type="text" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false"/>
+        <button id="win-submit-btn">Save</button>
+      </div>
+    </div>
+
+    <div id="win-leaderboard">
+      <div id="lb-title-row">
+        <span>Top 5</span><span>Leaderboard</span>
+      </div>
+      <div id="lb-rows"></div>
+    </div>
+
+    <button id="win-again-btn">↩ Play Again</button>
+  </div>
+</div>
+
+<!-- ══════════════════ LEADERBOARD PEEK PANEL ══════════════════ -->
+<div id="lb-panel">
+  <div id="lb-panel-box">
+    <div id="lb-panel-title">⬡ Leaderboard</div>
+    <div id="lb-panel-rows"></div>
+    <button id="lb-panel-close">Close</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script>
+"use strict";
+
+// ══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════════════
+const N            = 3;
+const PINCH_THRESH = 0.055;
+const TILE_GAP     = 2;
+const MAX_GRID_PX  = 520;
+const LB_KEY       = 'gp_leaderboard_v2';
+
+// ══════════════════════════════════════════════════════════════
+// DOM REFS
+// ══════════════════════════════════════════════════════════════
+const captureScreen = document.getElementById('capture-screen');
+const puzzleScreen  = document.getElementById('puzzle-screen');
+const videoEl       = document.getElementById('video');
+const overlayCanvas = document.getElementById('overlay');
+const ctx           = overlayCanvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas');
+const pCtx          = previewCanvas.getContext('2d');
+const flashEl       = document.getElementById('flash');
+const gridWrap      = document.getElementById('grid-wrap');
+const ghostCanvas   = document.getElementById('ghost-canvas');
+const timerDisplay  = document.getElementById('timer-display');
+const progFill      = document.getElementById('prog-fill');
+const progText      = document.getElementById('prog-text');
+const movesVal      = document.getElementById('moves-val');
+const dragHud       = document.getElementById('drag-hud');
+const cursorDot     = document.getElementById('gesture-cursor');
+const winOverlay    = document.getElementById('win-overlay');
+const winTimeBig    = document.getElementById('win-time-big');
+const winMoves      = document.getElementById('win-moves');
+const winLB         = document.getElementById('win-leaderboard');
+const winAgainBtn   = document.getElementById('win-again-btn');
+const lbPanel       = document.getElementById('lb-panel');
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let capPhase          = 'FRAMING';   // 'FRAMING' | 'CAPTURED'
+let bothWasPinching   = false;
+let lastLeftSnap      = null;
+let lastRightSnap     = null;
+let capturedImageData = null;
+let elapsedSeconds    = 0;
+
+// puzzle
+let tileOrder         = [];
+let tileEls           = [];
+let timerStart        = null;
+let timerRAF          = null;
+let moves             = 0;
+let solved            = false;
+
+// gesture
+let isPinching        = false;
+let heldTileIndex     = null;   // which tile ID is being held
+let dragGridIdx       = -1;     // which grid slot it came from
+let currentDropTarget = -1;
+let activeHandIdx     = -1;     // which MediaPipe hand index controls the puzzle
+
+// cursor smoothing
+let curX = 0, curY = 0;
+
+// fps
+let fpsCnt  = 0;
+let fpsLast = performance.now();
+
+// ══════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════
+function syncOverlay() {
+  const vp = document.getElementById('viewport');
+  overlayCanvas.width  = vp.clientWidth;
+  overlayCanvas.height = vp.clientHeight;
+}
+window.addEventListener('resize', syncOverlay);
+syncOverlay();
+
+function normDist(a, b)  { return Math.hypot(a.x - b.x, a.y - b.y); }
+function toPx(n)         { return { x:n.x*overlayCanvas.width, y:n.y*overlayCanvas.height }; }
+function fmt(v)          { return Math.round(v); }
+function lerp(a, b, t)   { return a + (b-a)*t; }
+
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+
+function updateFPS() {
+  fpsCnt++;
+  const now = performance.now();
+  if (now - fpsLast >= 500) {
+    const f = Math.round((fpsCnt/(now-fpsLast))*1000);
+    const el = document.getElementById('fps-val');
+    el.textContent = f;
+    el.className   = 'hv' + (f<20?' er':f<28?' on':'');
+    fpsCnt=0; fpsLast=now;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING — CAPTURE PHASE
+// ══════════════════════════════════════════════════════════════
+const CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+
+function drawHand(lm, pinching) {
+  ctx.strokeStyle = 'rgba(0,229,255,.2)'; ctx.lineWidth = 1.2;
+  for (const [a,b] of CONNECTIONS) {
+    const pa=toPx(lm[a]), pb=toPx(lm[b]);
+    ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke();
+  }
+  for (let i=0; i<lm.length; i++) {
+    const p=toPx(lm[i]);
+    let c='#00ff88';
+    if (i===4) c = pinching ? '#ff3d5a' : '#f5ff00';
+    if (i===8) c = pinching ? '#ff3d5a' : '#00e5ff';
+    ctx.beginPath(); ctx.arc(p.x,p.y, i===4||i===8?5:2.5, 0, Math.PI*2);
+    ctx.fillStyle=c; ctx.fill();
+  }
+}
+
+function drawROI(p1, p2, framing) {
+  const x=Math.min(p1.x,p2.x), y=Math.min(p1.y,p2.y);
+  const w=Math.abs(p2.x-p1.x), h=Math.abs(p2.y-p1.y);
+  ctx.save();
+  ctx.strokeStyle = framing ? '#f5ff00' : '#00e5ff';
+  ctx.lineWidth   = framing ? 2.5 : 3;
+  if (framing) { ctx.setLineDash([8,5]); ctx.lineDashOffset = -(Date.now()*0.04)%26; }
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([]);
+  [[p1.x,p1.y],[p2.x,p1.y],[p1.x,p2.y],[p2.x,p2.y]].forEach(([cx,cy])=>{
+    ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
+    ctx.fillStyle = framing ? '#f5ff00' : '#00e5ff'; ctx.fill();
+  });
+  ctx.font='10px "Share Tech Mono",monospace';
+  ctx.fillStyle = framing ? '#f5ff00' : '#00e5ff';
+  ctx.fillText(`${fmt(w)} × ${fmt(h)} px`, x+4, y-6);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════
+// CAPTURE
+// ══════════════════════════════════════════════════════════════
+function doCapture(p1n, p2n) {
+  if (!p1n || !p2n) return;
+  const vw=videoEl.videoWidth||1280, vh=videoEl.videoHeight||720;
+  const x1=Math.min(p1n.x,p2n.x)*vw, y1=Math.min(p1n.y,p2n.y)*vh;
+  const x2=Math.max(p1n.x,p2n.x)*vw, y2=Math.max(p1n.y,p2n.y)*vh;
+  const roiW=x2-x1, roiH=y2-y1;
+  if (roiW<50||roiH<50) return;
+
+  // Draw mirrored frame to offscreen canvas
+  const off=document.createElement('canvas');
+  off.width=vw; off.height=vh;
+  const oCtx=off.getContext('2d');
+  oCtx.save(); oCtx.scale(-1,1); oCtx.drawImage(videoEl,-vw,0,vw,vh); oCtx.restore();
+
+  previewCanvas.width=roiW; previewCanvas.height=roiH;
+  pCtx.drawImage(off, vw-x2, y1, roiW, roiH, 0, 0, roiW, roiH);
+  capturedImageData = pCtx.getImageData(0,0,roiW,roiH);
+
+  flashEl.style.opacity='.85';
+  setTimeout(()=>{ flashEl.style.opacity='0'; },110);
+
+  capPhase='CAPTURED';
+  document.getElementById('phase-val').textContent='CAPTURED';
+  document.getElementById('phase-val').className='hv ok';
+  document.getElementById('log-state').textContent='CAPTURED';
+  document.getElementById('log-size').textContent=`${fmt(roiW)}×${fmt(roiH)}`;
+
+  setTimeout(()=>launchPuzzle(roiW, roiH), 480);
+}
+
+// ══════════════════════════════════════════════════════════════
+// PUZZLE — LAUNCH
+// ══════════════════════════════════════════════════════════════
+function launchPuzzle(roiW, roiH) {
+  captureScreen.classList.remove('active');
+  puzzleScreen.classList.add('active');
+
+  const tileW = Math.floor(roiW/N);
+  const tileH = Math.floor(roiH/N);
+
+  const aspect = roiW/roiH;
+  let gridW, gridH;
+  if (aspect >= 1) {
+    gridW = Math.min(MAX_GRID_PX, window.innerWidth*0.56);
+    gridH = gridW/aspect;
+  } else {
+    gridH = Math.min(MAX_GRID_PX, window.innerHeight*0.56);
+    gridW = gridH*aspect;
+  }
+
+  const cellPx = Math.floor(gridW/N);
+  const cellH  = Math.floor(gridH/N);
+
+  gridWrap.innerHTML='';
+  gridWrap.style.width  = (cellPx*N + TILE_GAP*(N-1))+'px';
+  gridWrap.style.height = (cellH*N  + TILE_GAP*(N-1))+'px';
+  gridWrap.dataset.cellPx = cellPx;
+  gridWrap.dataset.cellH  = cellH;
+
+  // Ghost reference image (square crop from center)
+  const ghostSize = Math.min(roiW, roiH);
+  ghostCanvas.width  = ghostSize;
+  ghostCanvas.height = ghostSize;
+  ghostCanvas.getContext('2d').drawImage(previewCanvas, 0, 0, roiW, roiH, -(roiW-ghostSize)/2, -(roiH-ghostSize)/2, roiW, roiH);
+
+  // Build tiles
+  tileEls = [];
+  for (let id=0; id<N*N; id++) {
+    const row=Math.floor(id/N), col=id%N;
+
+    // Source tile from captured image
+    const src=document.createElement('canvas');
+    src.width=tileW; src.height=tileH;
+    src.getContext('2d').putImageData(capturedImageData, -col*tileW, -row*tileH);
+
+    // Display canvas (scaled to cellPx × cellH)
+    const dc=document.createElement('canvas');
+    dc.width=cellPx; dc.height=cellH;
+    dc.getContext('2d').drawImage(src, 0,0,tileW,tileH, 0,0,cellPx,cellH);
+
+    const div=document.createElement('div');
+    div.className='tile';
+    div.dataset.id=id;
+    div.style.width=cellPx+'px';
+    div.style.height=cellH+'px';
+    div.appendChild(dc);
+    gridWrap.appendChild(div);
+    tileEls.push({ el:div });
+  }
+
+  // Fisher-Yates shuffle — guaranteed not identity
+  tileOrder = Array.from({length:N*N},(_,i)=>i);
+  for (let i=tileOrder.length-1; i>0; i--) {
+    const j=Math.floor(Math.random()*(i+1));
+    [tileOrder[i],tileOrder[j]]=[tileOrder[j],tileOrder[i]];
+  }
+  // safety: if already solved after shuffle, swap first two
+  if (tileOrder.every((v,i)=>v===i)) [tileOrder[0],tileOrder[1]]=[tileOrder[1],tileOrder[0]];
+
+  // Reset all gesture / puzzle state
+  moves=0; solved=false;
+  isPinching=false; heldTileIndex=null; dragGridIdx=-1; currentDropTarget=-1; activeHandIdx=-1;
+  movesVal.textContent='0';
+  document.getElementById('puzzle-state').textContent='SOLVING';
+  document.getElementById('puzzle-state').className='hv';
+
+  placeTiles();
+
+  timerStart=performance.now();
+  if (timerRAF) cancelAnimationFrame(timerRAF);
+  tickTimer();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PUZZLE — TILE PLACEMENT + WIN CHECK
+// ══════════════════════════════════════════════════════════════
+function placeTiles() {
+  const cPx = parseInt(gridWrap.dataset.cellPx);
+  const cH  = parseInt(gridWrap.dataset.cellH);
+
+  tileOrder.forEach((tileId, gridIdx)=>{
+    const el  = tileEls[tileId].el;
+    const col = gridIdx%N;
+    const row = Math.floor(gridIdx/N);
+    el.style.left = (col*(cPx+TILE_GAP))+'px';
+    el.style.top  = (row*(cH+TILE_GAP))+'px';
+    const isCorrect = tileId===gridIdx;
+    el.classList.toggle('correct', isCorrect);
+  });
+
+  const correct = tileOrder.filter((v,i)=>v===i).length;
+  progFill.style.width     = Math.round((correct/(N*N))*100)+'%';
+  progText.textContent     = `${correct} / ${N*N}`;
+  document.getElementById('solved-hud').textContent = `${correct}/${N*N}`;
+
+  if (correct===N*N && !solved) triggerWin();
+}
+
+function tickTimer() {
+  if (solved) return;
+  const ms = performance.now()-timerStart;
+  elapsedSeconds = Math.floor(ms/1000);
+  timerDisplay.textContent = fmtTime(ms);
+  timerRAF=requestAnimationFrame(tickTimer);
+}
+
+// ══════════════════════════════════════════════════════════════
+// PUZZLE — GESTURE HIT-TEST
+// ══════════════════════════════════════════════════════════════
+function getTileAt(screenX, screenY) {
+  const gRect = gridWrap.getBoundingClientRect();
+  const cPx   = parseInt(gridWrap.dataset.cellPx);
+  const cH    = parseInt(gridWrap.dataset.cellH);
+  const xi    = screenX - gRect.left;
+  const yi    = screenY - gRect.top;
+  const col   = Math.floor(xi / (cPx+TILE_GAP));
+  const row   = Math.floor(yi / (cH+TILE_GAP));
+  if (col>=0 && col<N && row>=0 && row<N) return row*N+col;
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════
+// PUZZLE — GESTURE ENGINE (single dominant hand)
+// ══════════════════════════════════════════════════════════════
+function handleGestures(allHands) {
+  if (solved || capPhase !== 'CAPTURED' || allHands.length === 0) {
+    cursorDot.style.display = 'none';
+    return;
+  }
+
+  // Hand selection:
+  // If we have an active drag, keep using the same hand (by index).
+  // Otherwise prefer whichever hand is closest to the grid center.
+  let handLm = null;
+  if (activeHandIdx >= 0 && activeHandIdx < allHands.length) {
+    handLm = allHands[activeHandIdx];
+  } else {
+    // Pick the hand whose index-finger tip is closest to the grid's center
+    const gRect = gridWrap.getBoundingClientRect();
+    const gcx   = gRect.left + gRect.width/2;
+    const gcy   = gRect.top  + gRect.height/2;
+    let   bestDist = Infinity;
+    allHands.forEach((lm, i) => {
+      const tip = lm[8];
+      const sx  = (1-tip.x)*window.innerWidth;
+      const sy  = tip.y*window.innerHeight;
+      const d   = Math.hypot(sx-gcx, sy-gcy);
+      if (d < bestDist) { bestDist=d; handLm=lm; activeHandIdx=i; }
+    });
+  }
+
+  if (!handLm) return;
+
+  const thumb = handLm[4];
+  const index = handLm[8];
+  const d     = normDist(thumb, index);
+  const pinching = d < PINCH_THRESH;
+
+  // Smooth cursor using lerp
+  const rawX = (1-(thumb.x+index.x)/2)*window.innerWidth;
+  const rawY = ((thumb.y+index.y)/2)*window.innerHeight;
+  curX = lerp(curX, rawX, 0.35);
+  curY = lerp(curY, rawY, 0.35);
+
+  cursorDot.style.display = 'block';
+  cursorDot.style.left    = curX+'px';
+  cursorDot.style.top     = curY+'px';
+
+  const onTile = getTileAt(curX, curY) !== null;
+
+  // Cursor style
+  if (pinching) {
+    cursorDot.className = 'pinching';
+  } else if (onTile && !isPinching) {
+    cursorDot.className = 'on-tile';
+  } else {
+    cursorDot.className = '';
+  }
+
+  // ── PINCH START ──
+  if (pinching && !isPinching) {
+    isPinching = true;
+    const gridIdx = getTileAt(curX, curY);
+    if (gridIdx !== null) {
+      dragGridIdx   = gridIdx;
+      heldTileIndex = tileOrder[gridIdx];
+      const el      = tileEls[heldTileIndex].el;
+      el.classList.add('dragging');
+      dragHud.textContent = 'TILE '+ heldTileIndex;
+      dragHud.className   = 'hv on';
+    }
+  }
+
+  // ── DRAG MOVE ──
+  if (pinching && isPinching && heldTileIndex !== null) {
+    const el    = tileEls[heldTileIndex].el;
+    const gRect = gridWrap.getBoundingClientRect();
+    const cPx   = parseInt(gridWrap.dataset.cellPx);
+    const cH    = parseInt(gridWrap.dataset.cellH);
+    el.style.left = (curX - gRect.left - cPx/2)+'px';
+    el.style.top  = (curY - gRect.top  - cH/2 )+'px';
+
+    // Drop-target highlight
+    const targetIdx = getTileAt(curX, curY);
+    if (targetIdx !== currentDropTarget) {
+      if (currentDropTarget >= 0 && currentDropTarget < N*N)
+        tileEls[tileOrder[currentDropTarget]]?.el.classList.remove('drop-target');
+      currentDropTarget = targetIdx;
+      if (targetIdx !== null && targetIdx !== dragGridIdx)
+        tileEls[tileOrder[targetIdx]]?.el.classList.add('drop-target');
+    }
+  }
+
+  // ── PINCH RELEASE ──
+  if (!pinching && isPinching) {
+    isPinching    = false;
+    activeHandIdx = -1;   // release hand lock
+
+    if (heldTileIndex !== null) {
+      const el        = tileEls[heldTileIndex].el;
+      const targetIdx = getTileAt(curX, curY);
+
+      // Clear drop-target highlight
+      if (currentDropTarget >= 0 && currentDropTarget < N*N)
+        tileEls[tileOrder[currentDropTarget]]?.el.classList.remove('drop-target');
+      currentDropTarget = -1;
+
+      el.classList.remove('dragging');
+
+      if (targetIdx !== null && targetIdx !== dragGridIdx) {
+        // Perform swap
+        const swapId        = tileOrder[targetIdx];
+        tileOrder[targetIdx]  = heldTileIndex;
+        tileOrder[dragGridIdx]= swapId;
+        moves++;
+        movesVal.textContent = moves;
+
+        // Pulse newly-correct tiles
+        [{ id:heldTileIndex, idx:targetIdx }, { id:swapId, idx:dragGridIdx }].forEach(({id,idx})=>{
+          if (id===idx) {
+            const te = tileEls[id].el;
+            te.classList.add('just-solved');
+            te.addEventListener('animationend',()=>te.classList.remove('just-solved'),{once:true});
+          }
+        });
+      }
+
+      placeTiles();
+      heldTileIndex = null; dragGridIdx = -1;
+      dragHud.textContent = '—'; dragHud.className='hv';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// WIN
+// ══════════════════════════════════════════════════════════════
+function triggerWin() {
+  solved=true;
+  if (timerRAF) cancelAnimationFrame(timerRAF);
+
+  document.getElementById('puzzle-state').textContent='SOLVED';
+  document.getElementById('puzzle-state').className='hv ok';
+  cursorDot.style.display='none';
+
+  winTimeBig.textContent = timerDisplay.textContent;
+  winMoves.textContent   = `${moves} swap${moves!==1?'s':''} made`;
+
+  setTimeout(()=>{
+    winOverlay.classList.add('show');
+    document.getElementById('win-name-input').focus();
+  }, 650);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LEADERBOARD
+// ══════════════════════════════════════════════════════════════
+// LocalStorage Fallbacks
+function getLocalBoard() {
+  try { return JSON.parse(localStorage.getItem(LB_KEY)||'[]'); }
+  catch(e) { return []; }
+}
+
+function saveLocalScore(name, timeInSeconds, movesCount) {
+  let board = getLocalBoard();
+  const norm    = name.trim().toUpperCase();
+  const existing = board.find(e=>e.name===norm);
+
+  if (existing) {
+    // upsert: only update if this run is faster
+    if (timeInSeconds < existing.time) {
+      existing.time  = timeInSeconds;
+      existing.moves = movesCount;
+      existing.date  = new Date().toLocaleDateString();
+    }
+  } else {
+    board.push({ name:norm, time:timeInSeconds, moves:movesCount, date:new Date().toLocaleDateString() });
+  }
+
+  board.sort((a,b)=>a.time-b.time);
+  board = board.slice(0,5);   // keep only top 5
+  localStorage.setItem(LB_KEY, JSON.stringify(board));
+  return board;
+}
+
+// API integrations with fallbacks
+async function loadBoard() {
+  try {
+    const res = await fetch('/api/leaderboard');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn("API unavailable, falling back to localStorage:", e);
+  }
+  return getLocalBoard();
+}
+
+async function saveScore(name, timeInSeconds, movesCount) {
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim().toUpperCase(), time: timeInSeconds, moves: movesCount })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn("API unavailable to save score, falling back to localStorage:", e);
+  }
+  return saveLocalScore(name, timeInSeconds, movesCount);
+}
+
+function renderBoard(board, highlightName, containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML='';
+  const rankClasses = ['gold','silver','bronze','',''];
+
+  if (board.length===0) {
+    container.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--dim);padding:8px 0">No scores yet</div>';
+    return;
+  }
+
+  board.forEach((entry,i)=>{
+    const row  = document.createElement('div');
+    row.className='lb-row';
+    const mins = Math.floor(entry.time/60);
+    const secs = String(entry.time%60).padStart(2,'0');
+    const isMe = entry.name === highlightName?.trim().toUpperCase();
+
+    row.innerHTML=`
+      <div class="lb-rank ${rankClasses[i]}">#${i+1}</div>
+      <div class="lb-name ${isMe?'highlight':''}">${entry.name}</div>
+      <div class="lb-time">${mins}:${secs}</div>
+      <div class="lb-moves">${entry.moves}sw</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// ── Win submit handler ──
+document.getElementById('win-submit-btn').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('win-name-input');
+  const name = nameInput.value.trim();
+  if (!name) { nameInput.style.borderColor='var(--red)'; setTimeout(()=>nameInput.style.borderColor='',800); return; }
+
+  document.getElementById('win-submit-btn').disabled=true;
+  nameInput.disabled=true;
+
+  const board = await saveScore(name, elapsedSeconds, moves);
+  renderBoard(board, name, 'lb-rows');
+
+  document.getElementById('win-name-section').style.opacity='0.4';
+  winLB.style.display='block';
+  winAgainBtn.style.display='block';
+
+  // Also store name for leaderboard peek
+  window._lastPlayerName = name.trim().toUpperCase();
+});
+
+// Allow Enter key in name input
+document.getElementById('win-name-input').addEventListener('keydown', e=>{
+  if (e.key==='Enter') document.getElementById('win-submit-btn').click();
+});
+
+// ── Play Again ──
+function resetToCapture() {
+  if (timerRAF) cancelAnimationFrame(timerRAF);
+  solved=false;
+  capPhase='FRAMING'; bothWasPinching=false;
+  lastLeftSnap=null; lastRightSnap=null;
+  isPinching=false; heldTileIndex=null; dragGridIdx=-1; currentDropTarget=-1; activeHandIdx=-1;
+  cursorDot.style.display='none';
+
+  document.getElementById('phase-val').textContent='FRAME';
+  document.getElementById('phase-val').className='hv';
+  document.getElementById('log-state').textContent='WAITING';
+  document.getElementById('log-c1').textContent='--';
+  document.getElementById('log-c2').textContent='--';
+  document.getElementById('log-size').textContent='--';
+
+  // Reset win overlay for next round
+  document.getElementById('win-name-input').value='';
+  document.getElementById('win-name-input').disabled=false;
+  document.getElementById('win-submit-btn').disabled=false;
+  document.getElementById('win-name-section').style.opacity='1';
+  winLB.style.display='none';
+  winAgainBtn.style.display='none';
+
+  winOverlay.classList.remove('show');
+  puzzleScreen.classList.remove('active');
+  captureScreen.classList.add('active');
+}
+
+winAgainBtn.addEventListener('click', resetToCapture);
+document.getElementById('reframe-btn').addEventListener('click', resetToCapture);
+
+// ── Leaderboard peek (during puzzle) ──
+document.getElementById('lb-peek-btn').addEventListener('click', async ()=>{
+  const board = await loadBoard();
+  renderBoard(board, window._lastPlayerName||'', 'lb-panel-rows');
+  lbPanel.classList.add('show');
+});
+document.getElementById('lb-panel-close').addEventListener('click',()=>{
+  lbPanel.classList.remove('show');
+});
+
+// ── ESC key: always go back to reframe ──
+document.addEventListener('keydown', e=>{
+  if (e.key==='Escape') {
+    lbPanel.classList.remove('show');
+    if (winOverlay.classList.contains('show')) winOverlay.classList.remove('show');
+    else resetToCapture();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// MEDIAPIPE RESULTS
+// ══════════════════════════════════════════════════════════════
+function onResults(results) {
+  updateFPS();
+  syncOverlay();
+  ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+
+  const hands   = results.multiHandLandmarks || [];
+  const classes = results.multiHandedness    || [];
+  document.getElementById('hand-count').textContent = hands.length+'/2';
+
+  // ── PUZZLE PHASE: hand gestures drive puzzle ──
+  if (capPhase==='CAPTURED') {
+    handleGestures(hands);
+    return;
+  }
+
+  // ── CAPTURE PHASE: track left + right midpoints ──
+  let leftMid=null, rightMid=null;
+  let lPin=false, rPin=false;
+
+  hands.forEach((lm,i)=>{
+    const label = (classes[i]?.label||'Unknown')==='Left' ? 'RIGHT' : 'LEFT';
+    const pin   = normDist(lm[4],lm[8]) < PINCH_THRESH;
+    const mid   = { x:(lm[4].x+lm[8].x)/2, y:(lm[4].y+lm[8].y)/2 };
+    if (label==='LEFT')  { leftMid=mid;  lPin=pin; }
+    if (label==='RIGHT') { rightMid=mid; rPin=pin; }
+    drawHand(lm, pin);
+  });
+
+  const both = lPin && rPin && leftMid && rightMid;
+
+  if (both) {
+    // Both pinching — draw live ROI
+    bothWasPinching=true;
+    lastLeftSnap=leftMid;
+    lastRightSnap=rightMid;
+
+    drawROI(toPx(leftMid), toPx(rightMid), true);
+    document.getElementById('log-state').textContent='READY';
+    document.getElementById('log-c1').textContent=`(${fmt(toPx(leftMid).x)},${fmt(toPx(leftMid).y)})`;
+    document.getElementById('log-c2').textContent=`(${fmt(toPx(rightMid).x)},${fmt(toPx(rightMid).y)})`;
+    document.getElementById('log-size').textContent=`${fmt(Math.abs(toPx(rightMid).x-toPx(leftMid).x))}×${fmt(Math.abs(toPx(rightMid).y-toPx(leftMid).y))}`;
+
+  } else if (bothWasPinching) {
+    // Just released — capture!
+    bothWasPinching=false;
+    doCapture(lastLeftSnap, lastRightSnap);
+
+  } else {
+    // Idle
+    if (leftMid && rightMid) {
+      // Show guide dots even when not pinching
+    }
+    document.getElementById('log-state').textContent = lPin||rPin ? 'ONE HAND' : 'WAITING';
+    document.getElementById('log-c1').textContent='--';
+    document.getElementById('log-c2').textContent='--';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT — MediaPipe
+// ══════════════════════════════════════════════════════════════
+async function init() {
+  document.getElementById('feed-status').textContent='LOADING';
+  document.getElementById('feed-status').className='hv on';
+
+  const hands = new Hands({
+    locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  });
+  hands.setOptions({
+    maxNumHands:2, modelComplexity:1,
+    minDetectionConfidence:.72, minTrackingConfidence:.62
+  });
+  hands.onResults(onResults);
+
+  const camera = new Camera(videoEl,{
+    onFrame: async()=>{ await hands.send({image:videoEl}); },
+    width:1280, height:720
+  });
+
+  try {
+    await camera.start();
+    document.getElementById('feed-status').textContent='LIVE';
+    document.getElementById('feed-status').className='hv';
+    document.getElementById('status-dot').classList.add('live');
+  } catch(e) {
+    document.getElementById('feed-status').textContent='BLOCKED';
+    document.getElementById('feed-status').className='hv er';
+    console.error('[Gesture Puzzle] Camera error:', e);
+  }
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
